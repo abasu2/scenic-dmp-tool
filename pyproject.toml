@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scenic-dmp"
+version = "0.1.0"
+description = "Visualize f#mu for a Scenic program and view, edit a desired nu, and write the patched program"
+requires-python = ">=3.11"
+dependencies = ["scenic==3.1.1", "numpy", "shapely", "fastapi", "uvicorn[standard]"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ipykernel", "httpx"]
+
+[project.scripts]
+scenic-dmp = "scenic_dmp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+scenic_dmp = ["web_dist/*", "web_dist/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: samples a driving-domain program (deselect with -m 'not slow')"]

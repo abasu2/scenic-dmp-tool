@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "scenic-dmp",
+      "runtimeExecutable": ".venv/bin/scenic-dmp",
+      "runtimeArgs": ["serve", "examples/pedestrian.scenic", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}
