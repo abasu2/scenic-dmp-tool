@@ -100,11 +100,12 @@ class View:
         name = str(spec.get("name", "")).strip()
         if not name:
             raise ViewError("a view needs a name", "name")
-        names, code = compile_expr(spec)
+        args, fn, names = spec_function(spec)
         values = spec.get("values")
         bins = spec.get("bins")
         if (values is None) == (bins is None):
-            raise ViewError(f"view {name!r}: give either values or bins", "values")
+            hint = " (Detect fills them in)" if spec.get("source") else ""
+            raise ViewError(f"view {name!r}: give either values or bins{hint}", "values")
         if values is not None:
             values = [parse_value(v) for v in values]
         else:
@@ -112,8 +113,7 @@ class View:
                 bins = [float(b) for b in bins]
             except (TypeError, ValueError):
                 raise ViewError(f"view {name!r}: bin edges must be numbers", "bins") from None
-        args = [b["expr"].strip() for b in spec["bindings"]]
-        view = cls(name, args, _evaluator(code, names), values=values, bins=bins)
+        view = cls(name, args, fn, values=values, bins=bins)
         view.spec = normalize_spec(spec)
         view.binding_names = names
         return view
@@ -193,19 +193,59 @@ def deg(x):
 
 def normalize_spec(spec):
     """A clean copy of a spec with only the known keys."""
-    out = {
-        "name": str(spec["name"]).strip(),
-        "bindings": [
-            {"name": str(b["name"]).strip(), "expr": str(b["expr"]).strip()}
-            for b in spec["bindings"]
-        ],
-        "expr": str(spec["expr"]).strip(),
-    }
+    if spec.get("source"):
+        out = {
+            "name": str(spec["name"]).strip(),
+            "source": True,
+            "param": spec["param"],
+            "expr": str(spec["expr"]).strip(),
+            "line": spec.get("line"),
+        }
+    else:
+        out = {
+            "name": str(spec["name"]).strip(),
+            "bindings": [
+                {"name": str(b["name"]).strip(), "expr": str(b["expr"]).strip()}
+                for b in spec["bindings"]
+            ],
+            "expr": str(spec["expr"]).strip(),
+        }
     if spec.get("values") is not None:
         out["values"] = [str(v) if not isinstance(v, str) else v for v in spec["values"]]
     else:
         out["bins"] = [float(b) for b in spec["bins"]]
     return out
+
+
+def spec_function(spec):
+    """(argument expressions, fn, binding names) for a spec.
+
+    A form view's arguments are its bindings and fn evaluates its expression. A
+    source view (`param view_<name> = ...` in the program) records the param
+    itself, so fn is the identity.
+    """
+    if spec.get("source"):
+        from .source_views import record_arg
+
+        if not str(spec.get("param", "")).startswith("view_"):
+            raise ViewError(f"source view {spec.get('name')!r} has no param", "expr")
+        return [record_arg(spec)], _identity, []
+    names, code = compile_expr(spec)
+    args = [str(b["expr"]).strip() for b in spec["bindings"]]
+    return args, _evaluator(code, names), names
+
+
+def spec_args(spec):
+    """The argument expressions a spec needs recorded per scene."""
+    if spec.get("source"):
+        from .source_views import record_arg
+
+        return [record_arg(spec)]
+    return [str(b.get("expr", "")).strip() for b in spec.get("bindings") or []]
+
+
+def _identity(value):
+    return value
 
 
 def parse_value(text):
@@ -286,8 +326,7 @@ def detect_values(spec, rows, limit=40):
     Returns {"values": [...]} with values as text (sorted) when there are at most
     `limit`, or {"numeric": True, "min": ..., "max": ...} for many numbers.
     """
-    names, code = compile_expr(spec)
-    fn = _evaluator(code, names)
+    _args, fn, _names = spec_function(spec)
     probe = View("probe", ["_"], fn, values=[0])
     probe.name = spec.get("name", "view")
     results = probe.apply(rows)

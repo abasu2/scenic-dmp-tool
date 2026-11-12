@@ -83,8 +83,13 @@ def patch_block(view, *, nu, p_hat, w, a, M, n):
     """The lines appended to P for the Jeffrey update on `view`."""
     spec = view.spec
     labels = view.labels
-    fname = PREFIX + "view_" + _identifier(view.name)
-    call = f"{fname}({', '.join(f'({b})' for b in view.args)})"
+    source = bool(spec.get("source"))
+    if source:
+        # The view is defined in P, so the patch calls P's own expression.
+        call = spec["expr"] if _is_simple(spec["expr"]) else f"({spec['expr']})"
+    else:
+        fname = PREFIX + "view_" + _identifier(view.name)
+        call = f"{fname}({', '.join(f'({b})' for b in view.args)})"
 
     width = max(len(label) for label in labels)
     lines = [
@@ -118,6 +123,10 @@ def patch_block(view, *, nu, p_hat, w, a, M, n):
     if not requires:
         lines.append("# ν = f#μ̂, so no requirement is needed.")
         return "\n".join(lines)
+    if source:
+        lines.append(f"{PREFIX}u = Range(0, 1)")
+        lines.extend(requires)
+        return "\n".join(lines)
 
     tree = ast.parse(spec["expr"], mode="eval")
     renamable = (free_names(tree) & set(HELPERS)) - set(view.binding_names)
@@ -146,6 +155,15 @@ def _condition(view, i, call):
     if i == K:
         return f"{call} >= {_num(e[-1])}"
     return f"{_num(e[i - 1])} <= {call} < {_num(e[i])}"
+
+
+def _is_simple(expr):
+    """Whether a Scenic expression can go in a comparison without parentheses."""
+    try:
+        node = ast.parse(expr, mode="eval").body
+    except SyntaxError:  # Scenic syntax such as `distance from a to b`
+        return False
+    return isinstance(node, (ast.Call, ast.Name, ast.Attribute, ast.Subscript))
 
 
 def _num(x):

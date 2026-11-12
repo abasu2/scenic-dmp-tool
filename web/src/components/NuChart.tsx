@@ -2,9 +2,12 @@ import { useId, useRef, useState } from "react";
 import { api } from "../api";
 import { readout, rescale, uniform } from "../lib/jeffrey";
 import { int, niceMax, pct, sig } from "../lib/format";
+import { texText } from "../lib/tex";
 import { attempt, setStore, useStore } from "../store";
 import type { Estimates } from "../types";
-import { Hatch, PAD, W, Whisker, XLabel, YAxis } from "./chart";
+import { Hatch, PAD, SvgMath, W, Whisker, XLabel, YAxis } from "./chart";
+import { M } from "./Math";
+import { tip } from "./Tip";
 
 const PH = 190;
 
@@ -36,9 +39,17 @@ export function NuCard() {
   if (!est) {
     return (
       <section className="card">
-        <h2>Desired distribution ν</h2>
+        <h2>
+          Desired distribution <M tex="\nu" />
+        </h2>
         <p className="muted">
-          {job?.running ? "Sampling…" : "Define a view and sample the program to see f#μ̂ and edit ν."}
+          {job?.running ? (
+            "Sampling…"
+          ) : (
+            <>
+              Define a view and sample the program to see <M tex="f_\#\hat\mu" /> and edit <M tex="\nu" />.
+            </>
+          )}
         </p>
       </section>
     );
@@ -49,22 +60,36 @@ export function NuCard() {
     <section className="card">
       <div className="card-head">
         <h2>
-          ν for <code>{est.view}</code>
+          <M tex="\nu" /> for <code>{est.view}</code>
         </h2>
         <div className="buttons">
-          <button onClick={() => attempt(api.resetNu)} title="Make ν follow f#μ̂ again (no change to P)">
-            Reset ν = f#μ̂
+          <button
+            onClick={() => attempt(api.resetNu)}
+            {...tip(
+              <>
+                Make <M tex="\nu" /> follow <M tex="f_\#\hat\mu" /> again (no change to <M tex="P" />)
+              </>,
+            )}
+          >
+            Reset <M tex="\nu = f_\#\hat\mu" />
           </button>
           <button onClick={() => commit(uniform(est.supported))}>Uniform</button>
         </div>
       </div>
       <ReadoutLine est={est} ro={ro} nu={nu} />
       <div className="legend">
-        <span className="swatch ghost" /> f#μ̂ with 95% CI <span className="swatch nu" /> ν (drag)
+        <span className="swatch ghost" />
+        <span>
+          <M tex="f_\#\hat\mu" /> with 95% CI
+        </span>
+        <span className="swatch nu" />
+        <span>
+          <M tex="\nu" /> (drag)
+        </span>
       </div>
       <NuChart est={est} nu={nu} />
       <p className="muted small">
-        Drag a bar to set ν; the others rescale proportionally. Double-click to type a value. Click a bar to see
+        Drag a bar to set <M tex="\nu" />; the others rescale proportionally. Double-click to type a value. Click a bar to see
         its scenes.
       </p>
     </section>
@@ -76,26 +101,38 @@ function ReadoutLine({ est, ro, nu }: { est: Estimates; ro: ReturnType<typeof re
     const bad = est.labels.filter((_, i) => nu[i] > 0 && !est.supported[i]);
     return (
       <div className="status bad">
-        ν puts mass on values with no samples: {bad.join(", ")}. Drag a bar, or use Reset or Uniform.
+        <M tex="\nu" /> puts mass on values with no samples: {bad.join(", ")}. Drag a bar, or use Reset or Uniform.
       </div>
     );
   }
   return (
     <div className="readout">
       <span>
-        n = <b>{int(est.n)}</b>
+        <M tex="n =" /> <b>{int(est.n)}</b>
       </span>
       <span>
-        P: <b>{sig(est.mean_iters_P)}</b> iterations/scene
+        <M tex="P" />: <b>{sig(est.mean_iters_P)}</b> iterations/scene
       </span>
-      <span title="M = max ŵ(y)">
-        M = <b>{sig(ro.M)}</b>
+      <span {...tip(<M tex="M = \max_y \hat w(y)" />)}>
+        <M tex="M =" /> <b>{sig(ro.M)}</b>
       </span>
-      <span title="The fraction of P's scenes the patch keeps">
-        acceptance 1/M = <b>{pct(1 / ro.M)}</b>
+      <span
+        {...tip(
+          <>
+            The fraction of <M tex="P" />'s scenes the patch keeps
+          </>,
+        )}
+      >
+        acceptance <M tex="1/M =" /> <b>{pct(1 / ro.M)}</b>
       </span>
-      <span title="P's iterations per scene × M">
-        P′ ≈ <b>{sig(est.mean_iters_P * ro.M)}</b> iterations/scene
+      <span
+        {...tip(
+          <>
+            <M tex="P" />'s iterations per scene <M tex="\times M" />
+          </>,
+        )}
+      >
+        <M tex="P' \approx" /> <b>{sig(est.mean_iters_P * ro.M)}</b> iterations/scene
       </span>
     </div>
   );
@@ -199,17 +236,35 @@ function NuChart({ est, nu }: { est: Estimates; nu: number[] }) {
           const cx = PAD.l + bw * (k + 0.5);
           const selected = selection?.view === est.view && selection.value === k;
           const active = drag.current?.active && drag.current.k === k;
-          let tip = `${label}: ${est.counts[k]} of ${est.n} (${pct(est.p_hat[k])}), 95% CI [${pct(est.ci_lo[k])}, ${pct(est.ci_hi[k])}]\nν = ${pct(nu[k])}`;
-          if (ro && est.supported[k]) tip += `\nŵ = ${sig(ro.w[k])}, â = ${sig(ro.a[k])}`;
-          if (!est.supported[k]) tip += "\nNo samples, so ν is locked at 0.";
+          const tipContent = (
+            <>
+              <div>
+                {label}: {est.counts[k]} of {est.n} ({pct(est.p_hat[k])}), 95% CI [{pct(est.ci_lo[k])},{" "}
+                {pct(est.ci_hi[k])}]
+              </div>
+              <div>
+                <M tex="\nu =" /> {pct(nu[k])}
+              </div>
+              {ro && est.supported[k] && (
+                <div>
+                  <M tex="\hat w =" /> {sig(ro.w[k])}, <M tex="\hat a =" /> {sig(ro.a[k])}
+                </div>
+              )}
+              {!est.supported[k] && (
+                <div>
+                  No samples, so <M tex="\nu" /> is locked at 0.
+                </div>
+              )}
+            </>
+          );
           const gw = bw * 0.8;
           const nw = bw * 0.46;
           return (
             <g
               key={k}
               className={`col${est.supported[k] ? "" : " unsupported"}${active ? " active" : ""}${selected ? " selected" : ""}`}
+              {...tip(tipContent)}
             >
-              <title>{tip}</title>
               <rect x={PAD.l + bw * k} y={PAD.t} width={bw} height={PH} className="hit" />
               {est.supported[k] ? (
                 <>
@@ -228,12 +283,12 @@ function NuChart({ est, nu }: { est: Estimates; nu: number[] }) {
               <XLabel cx={cx} y={base + 15} text={label} rotate={!rows} />
               {rows && ro && est.supported[k] && (
                 <>
-                  <text x={cx} y={base + 31} textAnchor="middle" className="muted">
-                    ŵ {sig(ro.w[k])}
-                  </text>
-                  <text x={cx} y={base + 46} textAnchor="middle" className="muted">
-                    â {sig(ro.a[k])}
-                  </text>
+                  <SvgMath cx={cx} y={base + 31} width={bw}>
+                    <M tex="\hat w" /> {sig(ro.w[k])}
+                  </SvgMath>
+                  <SvgMath cx={cx} y={base + 46} width={bw}>
+                    <M tex="\hat a" /> {sig(ro.a[k])}
+                  </SvgMath>
                 </>
               )}
             </g>
@@ -242,7 +297,7 @@ function NuChart({ est, nu }: { est: Estimates; nu: number[] }) {
       </svg>
       {editor && (
         <div className="bar-editor" style={{ left: `${((PAD.l + bw * (editor.k + 0.5)) / W) * 100}%` }}>
-          ν({est.labels[editor.k]}) ={" "}
+          <M tex={`\\nu(${texText(est.labels[editor.k])}) =`} />{" "}
           <input
             autoFocus
             type="number"

@@ -10,19 +10,24 @@ import { api } from "../api";
 import { basename, sig } from "../lib/format";
 import { useStore } from "../store";
 import type { Patch } from "../types";
+import { M, MathText } from "./Math";
 
 export function ProgramPane() {
   const [tab, setTab] = useState<"P" | "P'">("P");
   const dirty = useStore((s) => s.dirty);
   const path = useStore((s) => s.workspace?.program.path);
+  const reveal = useStore((s) => s.reveal);
+  useEffect(() => {
+    if (reveal) setTab("P");
+  }, [reveal]);
   return (
     <section className="program-pane">
       <div className="tabs">
         <button className={tab === "P" ? "on" : ""} onClick={() => setTab("P")}>
-          P <span className="muted">{basename(path)}</span>
+          <M tex="P" /> <span className="muted">{basename(path)}</span>
         </button>
         <button className={tab === "P'" ? "on" : ""} onClick={() => setTab("P'")}>
-          P′ <span className="muted">patched</span>
+          <M tex="P'" /> <span className="muted">patched</span>
         </button>
       </div>
       {dirty && tab === "P" && (
@@ -53,6 +58,7 @@ function ProgramEditor() {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sourceRev = useStore((s) => s.workspace?.source_rev);
   const programError = useStore((s) => s.programError);
+  const reveal = useStore((s) => s.reveal);
 
   useEffect(() => {
     const v = new EditorView({
@@ -104,6 +110,19 @@ function ProgramEditor() {
     }
     v.dispatch(setDiagnostics(v.state, diagnostics));
   }, [programError]);
+
+  // Select a line on request, e.g. a source view's `param view_<name> = ...`.
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !reveal) return;
+    const doc = v.state.doc;
+    const line = doc.line(Math.min(Math.max(reveal.line, 1), doc.lines));
+    v.dispatch({
+      selection: { anchor: line.from, head: line.to },
+      effects: EditorView.scrollIntoView(line.from, { y: "center" }),
+    });
+    v.focus();
+  }, [reveal]);
 
   return <div ref={host} className="editor" />;
 }
@@ -198,11 +217,12 @@ function PatchView() {
       <div className="patch-head">
         {patch && !error ? (
           <span>
-            Jeffrey patch for <code>{patch.view}</code>: M = {sig(patch.M)}, P′ ≈ {sig(patch.predicted_iters)}{" "}
+            Jeffrey patch for <code>{patch.view}</code>: <M tex="M =" /> {sig(patch.M)}, <M tex="P' \approx" />{" "}
+            {sig(patch.predicted_iters)}{" "}
             iterations/scene{localNu ? " (dragging)" : ""}
           </span>
         ) : (
-          <span className="muted">{error ?? "…"}</span>
+          <span className="muted">{error ? <MathText text={error} /> : "…"}</span>
         )}
         <span className="buttons">
           <button disabled={!patch || !!error} onClick={() => patch && navigator.clipboard.writeText(patch.source)}>

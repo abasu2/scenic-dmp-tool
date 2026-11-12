@@ -5,12 +5,19 @@ export interface Binding {
   expr: string;
 }
 
+/** A view: a form view (bindings + Python expression) or a source view (`param view_<name> = <expr>` in P). */
 export interface ViewSpec {
   name: string;
-  bindings: Binding[];
+  /** Form views only. */
+  bindings?: Binding[];
+  /** The Python expression of a form view, or the Scenic expression of a source view. */
   expr: string;
   values?: string[];
   bins?: number[];
+  /** Source views only: defined in the program, at this param and line. */
+  source?: boolean;
+  param?: string;
+  line?: number | null;
 }
 
 export interface Workspace {
@@ -79,6 +86,8 @@ export interface Job {
   rate: number | null;
   stopped: boolean;
   error: ErrorInfo | null;
+  /** What the job is doing before sampling, e.g. detecting a view's values. */
+  note: string | null;
 }
 
 export interface Validation {

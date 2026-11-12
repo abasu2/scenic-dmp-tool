@@ -32,6 +32,8 @@ interface Store {
   selection: Selection | null;
   notice: ErrorInfo | null;
   programError: ErrorInfo | null;
+  /** A line of P to show in the editor; the nonce makes repeated requests for one line work. */
+  reveal: { line: number; nonce: number } | null;
 }
 
 export const useStore = create<Store>(() => ({
@@ -50,7 +52,12 @@ export const useStore = create<Store>(() => ({
   selection: null,
   notice: null,
   programError: null,
+  reveal: null,
 }));
+
+export function revealLine(line: number) {
+  setStore({ reveal: { line, nonce: Math.random() } });
+}
 
 export const setStore = useStore.setState;
 

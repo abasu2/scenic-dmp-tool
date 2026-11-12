@@ -3,6 +3,8 @@ import { api } from "../api";
 import { int, niceMax, pct, sig } from "../lib/format";
 import { attempt, useStore } from "../store";
 import { PAD, W, Whisker, XLabel, YAxis } from "./chart";
+import { M } from "./Math";
+import { tip } from "./Tip";
 
 const PH = 130;
 
@@ -27,7 +29,9 @@ export function ValidationPanel() {
   return (
     <section className="card">
       <div className="card-head">
-        <h2>Check P′ by sampling it</h2>
+        <h2>
+          Check <M tex="P'" /> by sampling it
+        </h2>
         <div className="buttons">
           <label>
             n <input className="num wide-num" type="number" min={10} value={n} onChange={(e) => setN(Number(e.target.value))} />
@@ -36,35 +40,62 @@ export function ValidationPanel() {
             className="primary"
             disabled={running || blocked}
             onClick={() => attempt(() => api.validate(n))}
-            title={blocked ? "ν is blocked" : "Compile P′ and draw n scenes from it"}
+            {...tip(
+              blocked ? (
+                <>
+                  <M tex="\nu" /> is blocked
+                </>
+              ) : (
+                <>
+                  Compile <M tex="P'" /> and draw <M tex="n" /> scenes from it
+                </>
+              ),
+            )}
           >
-            {checking ? "Sampling P′…" : "Check P′"}
+            {checking ? (
+              <>
+                Sampling <M tex="P'" />…
+              </>
+            ) : (
+              <>
+                Check <M tex="P'" />
+              </>
+            )}
           </button>
         </div>
       </div>
       {!validation && (
         <p className="muted">
-          P′ keeps a scene with view value y with probability â(y). Sampling P′ checks that f#μ̂<sub>P′</sub> ≈ ν
-          and measures what the patch costs.
+          <M tex="P'" /> keeps a scene with view value <M tex="y" /> with probability <M tex="\hat a(y)" />. Sampling{" "}
+          <M tex="P'" /> checks that <M tex="f_\#\hat\mu_{P'} \approx \nu" /> and measures what the patch costs.
         </p>
       )}
       {validation && (
         <>
-          {stale && !checking && <div className="banner">ν or the view changed since this check. Check again.</div>}
+          {stale && !checking && (
+            <div className="banner">
+              <M tex="\nu" /> or the view changed since this check. Check again.
+            </div>
+          )}
           <div className="readout">
             <span>
-              n = <b>{int(validation.n)}</b>
+              <M tex="n =" /> <b>{int(validation.n)}</b>
               {validation.n < validation.target ? ` of ${int(validation.target)}` : ""}
             </span>
             <span>
-              P′: <b>{sig(validation.mean_iters)}</b> iterations/scene (predicted {sig(validation.predicted_iters)})
+              <M tex="P'" />: <b>{sig(validation.mean_iters)}</b> iterations/scene (predicted {sig(validation.predicted_iters)})
             </span>
             <span className={allIn ? "good" : "bad"}>
-              {allIn ? "ν is inside every 95% CI" : "ν is outside some 95% CIs"}
+              <M tex="\nu" /> {allIn ? "is inside every 95% CI" : "is outside some 95% CIs"}
             </span>
           </div>
           <div className="legend">
-            <span className="swatch nu-light" /> ν <span className="swatch point" /> f#μ̂<sub>P′</sub> with 95% CI
+            <span className="swatch nu-light" />
+            <M tex="\nu" />
+            <span className="swatch point" />
+            <span>
+              <M tex="f_\#\hat\mu_{P'}" /> with 95% CI
+            </span>
           </div>
           <ValidationChart />
         </>
@@ -89,10 +120,16 @@ function ValidationChart() {
         const cx = PAD.l + bw * (k + 0.5);
         const w = bw * 0.6;
         return (
-          <g key={k} className={`col${v.nu_in_ci[k] ? "" : " outside"}`}>
-            <title>
-              {`${label}: ν = ${pct(v.nu[k])}, f#μ̂_P′ = ${pct(v.p_hat[k])} [${pct(v.ci_lo[k])}, ${pct(v.ci_hi[k])}] (${v.counts[k]} of ${v.n})`}
-            </title>
+          <g
+            key={k}
+            className={`col${v.nu_in_ci[k] ? "" : " outside"}`}
+            {...tip(
+              <>
+                {label}: <M tex="\nu =" /> {pct(v.nu[k])}, <M tex="f_\#\hat\mu_{P'} =" /> {pct(v.p_hat[k])} [
+                {pct(v.ci_lo[k])}, {pct(v.ci_hi[k])}] ({v.counts[k]} of {v.n})
+              </>,
+            )}
+          >
             <rect x={cx - w / 2} y={yOf(v.nu[k])} width={w} height={base - yOf(v.nu[k])} className="nu-light" />
             <Whisker cx={cx} lo={yOf(v.ci_lo[k])} hi={yOf(v.ci_hi[k])} cap={Math.min(6, bw * 0.15)} />
             <circle cx={cx} cy={yOf(v.p_hat[k])} r={3.5} className="point" />

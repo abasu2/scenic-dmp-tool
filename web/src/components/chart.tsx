@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { pct } from "../lib/format";
 
 export const W = 640;
@@ -51,5 +52,14 @@ export function Hatch({ id }: { id: string }) {
         <line x1={0} y1={0} x2={0} y2={6} className="hatch" />
       </pattern>
     </defs>
+  );
+}
+
+/** A muted line of math centered on cx, with its baseline at y. SVG text can't hold KaTeX's HTML. */
+export function SvgMath({ cx, y, width, children }: { cx: number; y: number; width: number; children: ReactNode }) {
+  return (
+    <foreignObject x={cx - width / 2} y={y - 12} width={width} height={16}>
+      <div className="svg-math">{children}</div>
+    </foreignObject>
   );
 }

@@ -3,6 +3,8 @@ import { nEff, previewAfter, readout } from "../lib/jeffrey";
 import { int, niceMax, pct } from "../lib/format";
 import { attempt, setStore, useStore } from "../store";
 import { PAD, W, XLabel, YAxis } from "./chart";
+import { M } from "./Math";
+import { tip } from "./Tip";
 
 const PH = 120;
 
@@ -45,14 +47,29 @@ export function PreviewCard() {
               </option>
             ))}
           </select>{" "}
-          under μ̂′
+          under <M tex="\hat\mu'" />
         </h2>
         <span className="muted" title="Kish effective sample size of the reweighted cached scenes">
-          {neff !== null ? `n_eff = ${int(neff)} of ${int(est.n)}` : "ν is blocked"}
+          {neff !== null ? (
+            <>
+              <M tex="n_{\text{eff}} =" /> {int(neff)} of {int(est.n)}
+            </>
+          ) : (
+            <>
+              <M tex="\nu" /> is blocked
+            </>
+          )}
         </span>
       </div>
       <div className="legend">
-        <span className="swatch ghost-solid" /> g#μ̂ (now) <span className="swatch nu" /> g#μ̂′ (cached scenes reweighted by ŵ)
+        <span className="swatch ghost-solid" />
+        <span>
+          <M tex="g_\#\hat\mu" /> (now)
+        </span>
+        <span className="swatch nu" />
+        <span>
+          <M tex="g_\#\hat\mu'" /> (cached scenes reweighted by <M tex="\hat w" />)
+        </span>
       </div>
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`}>
         <YAxis ymax={ymax} top={PAD.t} height={PH} />
@@ -66,10 +83,17 @@ export function PreviewCard() {
               key={k}
               className={`col clickable${selected ? " selected" : ""}`}
               onClick={() => setStore({ selection: same ? null : { view: preview.name, value: k } })}
+              {...tip(
+                <>
+                  {label}: <M tex="g_\#\hat\mu =" /> {pct(before[k])}
+                  {after && (
+                    <>
+                      , <M tex="g_\#\hat\mu' =" /> {pct(after[k])}
+                    </>
+                  )}
+                </>,
+              )}
             >
-              <title>
-                {`${label}: g#μ̂ = ${pct(before[k])}` + (after ? `, g#μ̂′ = ${pct(after[k])}` : "")}
-              </title>
               <rect x={PAD.l + bw * k} y={PAD.t} width={bw} height={PH} className="hit" />
               <rect x={cx - w} y={yOf(before[k])} width={w} height={base - yOf(before[k])} className="ghost-solid" />
               {after && <rect x={cx} y={yOf(after[k])} width={w} height={base - yOf(after[k])} className="nu" />}

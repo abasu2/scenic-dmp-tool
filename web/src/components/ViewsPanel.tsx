@@ -1,8 +1,16 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { niceBins } from "../lib/format";
-import { attempt, setStore, useStore } from "../store";
+import { attempt, revealLine, setStore, useStore } from "../store";
 import type { ViewErrorItem, ViewSpec } from "../types";
+import { M, MathText } from "./Math";
+import { tip } from "./Tip";
+
+const EDIT_NU_TIP = (
+  <>
+    Edit <M tex="\nu" /> on this view; the others are previews
+  </>
+);
 
 function splitList(text: string): string[] {
   return text
@@ -71,26 +79,34 @@ export function ViewsPanel() {
       </div>
       {draft.views.length === 0 && (
         <p className="muted">
-          A view f maps a scene to a finite set of values. Bind names to Scenic expressions, then write f as a Python
-          expression over those names.
+          A view f maps a scene to a finite set of values. Define one in P as{" "}
+          <code>param view_&lt;name&gt; = &lt;expression&gt;</code>, or add one here: bind names to Scenic
+          expressions, then write f as a Python expression over those names.
         </p>
       )}
-      {draft.views.map((spec, i) => (
-        <ViewCard
-          key={i}
-          spec={spec}
-          isF={spec.name === f}
-          errors={viewErrors.filter((e) => e.index === i)}
-          disabled={running}
-          onChange={(next) => {
+      {draft.views.map((spec, i) => {
+        const common = {
+          spec,
+          isF: spec.name === f,
+          errors: viewErrors.filter((e) => e.index === i),
+          disabled: running,
+          onChange: (next: ViewSpec) => {
             const views = draft.views.slice();
             views[i] = next;
             update(views, spec.name === f ? next.name : draft.f);
-          }}
-          onRemove={() => update(draft.views.filter((_, j) => j !== i), spec.name === f ? null : draft.f)}
-          onChooseF={() => chooseF(spec.name)}
-        />
-      ))}
+          },
+          onChooseF: () => chooseF(spec.name),
+        };
+        return spec.source ? (
+          <SourceViewCard key={`src-${spec.name}`} {...common} />
+        ) : (
+          <ViewCard
+            key={i}
+            {...common}
+            onRemove={() => update(draft.views.filter((_, j) => j !== i), spec.name === f ? null : draft.f)}
+          />
+        );
+      })}
       {draftDirty && (
         <div className="apply-bar">
           <span className="muted">Views changed.</span>
@@ -104,64 +120,61 @@ export function ViewsPanel() {
   );
 }
 
-function ViewCard(props: {
+interface CardProps {
   spec: ViewSpec;
   isF: boolean;
   errors: ViewErrorItem[];
   disabled: boolean;
   onChange: (spec: ViewSpec) => void;
-  onRemove: () => void;
   onChooseF: () => void;
-}) {
+}
+
+/** A view defined in P as `param view_<name> = <expr>`; only its values or bins are edited here. */
+function SourceViewCard({ spec, isF, errors, disabled, onChange, onChooseF }: CardProps) {
+  const messages = errors.map((e) => e.message);
+  const unset = spec.values === undefined && spec.bins === undefined;
+  return (
+    <div className={`view-card source${isF ? " is-f" : ""}${errors.length ? " has-error" : ""}`}>
+      <div className="view-head">
+        <span className="view-name static">{spec.name}</span>
+        {spec.line ? (
+          <button className="link" onClick={() => revealLine(spec.line!)} title="Show this line in the editor">
+            in P, line {spec.line}
+          </button>
+        ) : (
+          <span className="muted small">in P</span>
+        )}
+        <label className="radio" {...tip(EDIT_NU_TIP)}>
+          <input type="radio" checked={isF} onChange={onChooseF} disabled={disabled} />
+          <span>
+            edit <M tex="\nu" />
+          </span>
+        </label>
+      </div>
+      <code className="source-line" title="Edit this in the program">
+        param {spec.param} = {spec.expr}
+      </code>
+      <YRow spec={spec} onChange={onChange} disabled={disabled} />
+      {unset && !messages.length && (
+        <div className="muted small">The values or bins are detected when you sample, or click Detect.</div>
+      )}
+      <Errors messages={messages} />
+    </div>
+  );
+}
+
+/** A view built in the form: bindings to Scenic expressions plus a Python expression. */
+function ViewCard(props: CardProps & { onRemove: () => void }) {
   const { spec, isF, errors, disabled, onChange } = props;
-  const kind = spec.bins !== undefined ? "bins" : "values";
-  const [valuesText, setValuesText] = useState((spec.values ?? []).join(", "));
-  const [binsText, setBinsText] = useState((spec.bins ?? []).join(", "));
-  const [detecting, setDetecting] = useState(false);
-
-  // Follow changes from outside (apply, load) without fighting the text being typed.
-  useEffect(() => {
-    if (splitList(valuesText).join("\n") !== (spec.values ?? []).join("\n")) setValuesText((spec.values ?? []).join(", "));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spec.values]);
-  useEffect(() => {
-    if (parseBins(binsText).join("\n") !== (spec.bins ?? []).join("\n")) setBinsText((spec.bins ?? []).join(", "));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spec.bins]);
-
+  const bindings = spec.bindings ?? [];
   const err = (field: string) => errors.filter((e) => e.field === field).map((e) => e.message);
   const other = errors.filter((e) => !["name", "bindings", "expr", "values", "bins"].includes(e.field ?? ""));
 
   const setBinding = (j: number, key: "name" | "expr", value: string) => {
-    const bindings = spec.bindings.map((b, i) => (i === j ? { ...b, [key]: value } : b));
-    onChange({ ...spec, bindings });
+    onChange({ ...spec, bindings: bindings.map((b, i) => (i === j ? { ...b, [key]: value } : b)) });
   };
 
-  const setKind = (k: "values" | "bins") => {
-    if (k === kind) return;
-    const { values: _v, bins: _b, ...rest } = spec;
-    onChange(k === "bins" ? { ...rest, bins: parseBins(binsText) } : { ...rest, values: splitList(valuesText) });
-  };
-
-  const detect = async () => {
-    setDetecting(true);
-    const r = await attempt(() => api.detect(spec));
-    setDetecting(false);
-    if (!r) return;
-    const { values: _v, bins: _b, ...rest } = spec;
-    if (r.values) {
-      setValuesText(r.values.join(", "));
-      onChange({ ...rest, values: r.values });
-    } else if (r.numeric && r.min !== undefined && r.max !== undefined) {
-      const bins = niceBins(r.min, r.max);
-      setBinsText(bins.join(", "));
-      onChange({ ...rest, bins });
-    } else {
-      setStore({ notice: { message: `view ${spec.name}: too many distinct non-numeric values to list` } });
-    }
-  };
-
-  const argList = spec.bindings.map((b) => b.name || "?").join(", ");
+  const argList = bindings.map((b) => b.name || "?").join(", ");
   return (
     <div className={`view-card${isF ? " is-f" : ""}${errors.length ? " has-error" : ""}`}>
       <div className="view-head">
@@ -172,8 +185,11 @@ function ViewCard(props: {
           disabled={disabled}
           aria-label="View name"
         />
-        <label className="radio" title="Edit ν on this view; the others are previews">
-          <input type="radio" checked={isF} onChange={props.onChooseF} disabled={disabled} /> edit ν
+        <label className="radio" {...tip(EDIT_NU_TIP)}>
+          <input type="radio" checked={isF} onChange={props.onChooseF} disabled={disabled} />
+          <span>
+            edit <M tex="\nu" />
+          </span>
         </label>
         <button className="icon" onClick={props.onRemove} disabled={disabled} title="Remove view">
           ×
@@ -182,7 +198,7 @@ function ViewCard(props: {
       <Errors messages={err("name")} />
 
       <div className="field-label">Bindings (name = Scenic expression)</div>
-      {spec.bindings.map((b, j) => (
+      {bindings.map((b, j) => (
         <div className="binding" key={j}>
           <input
             className="mono bname"
@@ -202,8 +218,8 @@ function ViewCard(props: {
           />
           <button
             className="icon"
-            onClick={() => onChange({ ...spec, bindings: spec.bindings.filter((_, i) => i !== j) })}
-            disabled={disabled || spec.bindings.length <= 1}
+            onClick={() => onChange({ ...spec, bindings: bindings.filter((_, i) => i !== j) })}
+            disabled={disabled || bindings.length <= 1}
             title="Remove binding"
           >
             ×
@@ -212,7 +228,7 @@ function ViewCard(props: {
       ))}
       <button
         className="link"
-        onClick={() => onChange({ ...spec, bindings: [...spec.bindings, { name: "", expr: "" }] })}
+        onClick={() => onChange({ ...spec, bindings: [...bindings, { name: "", expr: "" }] })}
         disabled={disabled}
       >
         + binding
@@ -231,45 +247,94 @@ function ViewCard(props: {
       />
       <Errors messages={err("expr")} />
 
-      <div className="y-row">
-        <div className="segmented">
-          <button className={kind === "values" ? "on" : ""} onClick={() => setKind("values")} disabled={disabled}>
-            values
-          </button>
-          <button className={kind === "bins" ? "on" : ""} onClick={() => setKind("bins")} disabled={disabled}>
-            bins
-          </button>
-        </div>
-        {kind === "values" ? (
-          <input
-            className="mono wide"
-            value={valuesText}
-            placeholder="brake, continue"
-            onChange={(e) => {
-              setValuesText(e.target.value);
-              onChange({ ...spec, values: splitList(e.target.value) });
-            }}
-            disabled={disabled}
-            aria-label="Values"
-          />
-        ) : (
-          <input
-            className="mono wide"
-            value={binsText}
-            placeholder="20, 25, 30, 35"
-            onChange={(e) => {
-              setBinsText(e.target.value);
-              onChange({ ...spec, bins: parseBins(e.target.value) });
-            }}
-            disabled={disabled}
-            aria-label="Bin edges"
-          />
-        )}
-        <button onClick={detect} disabled={disabled || detecting} title="Fill in from sampled scenes">
-          {detecting ? "Detecting…" : "Detect"}
+      <YRow spec={spec} onChange={onChange} disabled={disabled} />
+      <Errors messages={[...err("values"), ...err("bins"), ...other.map((e) => e.message)]} />
+    </div>
+  );
+}
+
+/** A view's Y: declared values or bin edges, with Detect to fill them in from sampled scenes. */
+function YRow({ spec, onChange, disabled }: { spec: ViewSpec; onChange: (s: ViewSpec) => void; disabled: boolean }) {
+  const kind = spec.bins !== undefined ? "bins" : "values";
+  const [valuesText, setValuesText] = useState((spec.values ?? []).join(", "));
+  const [binsText, setBinsText] = useState((spec.bins ?? []).join(", "));
+  const [detecting, setDetecting] = useState(false);
+
+  // Follow changes from outside (apply, load, detection) without fighting the text being typed.
+  useEffect(() => {
+    if (splitList(valuesText).join("\n") !== (spec.values ?? []).join("\n")) setValuesText((spec.values ?? []).join(", "));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec.values]);
+  useEffect(() => {
+    if (parseBins(binsText).join("\n") !== (spec.bins ?? []).join("\n")) setBinsText((spec.bins ?? []).join(", "));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec.bins]);
+
+  const { values: _v, bins: _b, ...rest } = spec;
+  // An empty Y on a source view means "not set yet", which sampling detects.
+  const withValues = (list: string[]) => (spec.source && list.length === 0 ? rest : { ...rest, values: list });
+  const withBins = (edges: number[]) => (spec.source && edges.length === 0 ? rest : { ...rest, bins: edges });
+
+  const setKind = (k: "values" | "bins") => {
+    if (k === kind) return;
+    onChange(k === "bins" ? withBins(parseBins(binsText)) : withValues(splitList(valuesText)));
+  };
+
+  const detect = async () => {
+    setDetecting(true);
+    const r = await attempt(() => api.detect(spec));
+    setDetecting(false);
+    if (!r) return;
+    if (r.values) {
+      setValuesText(r.values.join(", "));
+      onChange({ ...rest, values: r.values });
+    } else if (r.numeric && r.min !== undefined && r.max !== undefined) {
+      const bins = niceBins(r.min, r.max);
+      setBinsText(bins.join(", "));
+      onChange({ ...rest, bins });
+    } else {
+      setStore({ notice: { message: `view ${spec.name}: too many distinct non-numeric values to list` } });
+    }
+  };
+
+  return (
+    <div className="y-row">
+      <div className="segmented">
+        <button className={kind === "values" ? "on" : ""} onClick={() => setKind("values")} disabled={disabled}>
+          values
+        </button>
+        <button className={kind === "bins" ? "on" : ""} onClick={() => setKind("bins")} disabled={disabled}>
+          bins
         </button>
       </div>
-      <Errors messages={[...err("values"), ...err("bins"), ...other.map((e) => e.message)]} />
+      {kind === "values" ? (
+        <input
+          className="mono wide"
+          value={valuesText}
+          placeholder={spec.source ? "detected when you sample" : "brake, continue"}
+          onChange={(e) => {
+            setValuesText(e.target.value);
+            onChange(withValues(splitList(e.target.value)));
+          }}
+          disabled={disabled}
+          aria-label="Values"
+        />
+      ) : (
+        <input
+          className="mono wide"
+          value={binsText}
+          placeholder={spec.source ? "detected when you sample" : "20, 25, 30, 35"}
+          onChange={(e) => {
+            setBinsText(e.target.value);
+            onChange(withBins(parseBins(e.target.value)));
+          }}
+          disabled={disabled}
+          aria-label="Bin edges"
+        />
+      )}
+      <button onClick={detect} disabled={disabled || detecting} title="Fill in from sampled scenes">
+        {detecting ? "Detecting…" : "Detect"}
+      </button>
     </div>
   );
 }
@@ -279,7 +344,9 @@ function Errors({ messages }: { messages: string[] }) {
   return (
     <div className="field-error">
       {messages.map((m, i) => (
-        <div key={i}>{m}</div>
+        <div key={i}>
+          <MathText text={m} />
+        </div>
       ))}
     </div>
   );

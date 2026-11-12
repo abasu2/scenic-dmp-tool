@@ -3,6 +3,8 @@ import { api, type ScenesSource } from "../api";
 import { int } from "../lib/format";
 import { setStore, useStore } from "../store";
 import type { MapData, Scene, SceneObject } from "../types";
+import { M, MathText } from "./Math";
+import { tip } from "./Tip";
 
 const MAP_ID = "dmp-map";
 const LAYER_CLASS: Record<string, string> = {
@@ -30,6 +32,7 @@ export function SceneGallery() {
 
   const nuKey = source === "muprime" ? est?.nu.join(",") : "";
   const ready = est !== null;
+  const unchecked = source === "pprime" && !hasValidation;
 
   useEffect(() => {
     if (!programId) return;
@@ -38,10 +41,10 @@ export function SceneGallery() {
 
   useEffect(() => {
     if (!ready) return;
-    if (source === "pprime" && !hasValidation) {
+    if (unchecked) {
       setScenes([]);
       setTotal(0);
-      setError("Check P′ by sampling it first.");
+      setError(null);
       return;
     }
     let cancelled = false;
@@ -59,7 +62,7 @@ export function SceneGallery() {
     return () => {
       cancelled = true;
     };
-  }, [ready, source, selection?.view, selection?.value, shuffle, programId, jobsFinished, nuKey, hasValidation]);
+  }, [ready, source, selection?.view, selection?.value, shuffle, programId, jobsFinished, nuKey, unchecked]);
 
   if (!est) return null;
   const selLabel =
@@ -76,13 +79,13 @@ export function SceneGallery() {
           <div className="segmented">
             {(
               [
-                ["mu", "μ̂", "Scenes of P"],
-                ["muprime", "μ̂′", "Scenes of P drawn with probability ∝ ŵ"],
-                ["pprime", "P′", "Scenes sampled from P′"],
+                ["mu", "\\hat\\mu", <>Scenes of <M tex="P" /></>],
+                ["muprime", "\\hat\\mu'", <>Scenes of <M tex="P" /> drawn with probability <M tex="\propto \hat w" /></>],
+                ["pprime", "P'", <>Scenes sampled from <M tex="P'" /></>],
               ] as const
             ).map(([key, label, title]) => (
-              <button key={key} className={source === key ? "on" : ""} title={title} onClick={() => setSource(key)}>
-                {label}
+              <button key={key} className={source === key ? "on" : ""} {...tip(title)} onClick={() => setSource(key)}>
+                <M tex={label} />
               </button>
             ))}
           </div>
@@ -102,9 +105,18 @@ export function SceneGallery() {
         ) : (
           <span className="muted">All scenes. Click a bar to filter by its value.</span>
         )}
-        {!error && <span className="muted">{int(total)} matching</span>}
+        {!error && !unchecked && <span className="muted">{int(total)} matching</span>}
       </div>
-      {error && <div className="muted">{error}</div>}
+      {unchecked && (
+        <div className="muted">
+          Check <M tex="P'" /> by sampling it first.
+        </div>
+      )}
+      {error && (
+        <div className="muted">
+          <MathText text={error} />
+        </div>
+      )}
       {map && <MapDefs map={map} />}
       <div className="gallery">
         {scenes.map((scene) => (

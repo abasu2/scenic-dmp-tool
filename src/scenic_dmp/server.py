@@ -31,7 +31,8 @@ from .patch import PatchError, session_patch, validate
 from .program import Program, ProgramError
 from .scene_geom import map_json, scene_json
 from .session import Session
-from .view import View, ViewError, detect_values
+from .source_views import auto_y, discover, merge, needs_y
+from .view import View, ViewError, detect_values, spec_args, spec_function
 
 WEB_DIST = Path(__file__).parent / "web_dist"
 WORKSPACE_VERSION = 1
@@ -56,6 +57,7 @@ class Job:
         self.running = True
         self.stop = threading.Event()
         self.error = None
+        self.note = None
         self.last_push = 0.0
 
     def to_json(self):
@@ -70,6 +72,7 @@ class Job:
             "rate": self.done / elapsed if elapsed > 0 else None,
             "stopped": self.stop.is_set(),
             "error": self.error,
+            "note": self.note,
         }
 
 
@@ -167,10 +170,12 @@ class AppState:
         return here != self._program_key(session.program)
 
     def set_program(self, source=None, path=..., mode2D=None, params=None, external=False):
+        views_changed = False
         with self.lock:
             p = self.workspace["program"]
             if source is not None:
                 p["source"] = source
+                views_changed = self._rediscover()
             if path is not ...:
                 p["path"] = str(Path(path).expanduser().resolve()) if path else None
             if mode2D is not None:
@@ -179,9 +184,36 @@ class AppState:
                 p["params"] = dict(params)
             if external:
                 self.workspace["source_rev"] += 1
-        if external:
+        if external or views_changed:
             self.publish(self.workspace_msg())
         self.publish(self.state_msg())
+
+    def _rediscover(self):
+        """Update the source views (`param view_<name> = ...`) from the program. Under self.lock."""
+        ws = self.workspace
+        merged = merge(ws["views"], discover(ws["program"]["source"]))
+        if merged == ws["views"]:
+            return False
+        ws["views"] = merged
+        names = [s["name"] for s in merged]
+        if ws["f"] not in names:
+            ws["f"] = names[0] if names else None
+        if ws["preview"] not in names or ws["preview"] == ws["f"]:
+            ws["preview"] = next((n for n in names if n != ws["f"]), None)
+        return True
+
+    def _reconcile(self, specs):
+        """The client's specs, with source views as the program defines them.
+
+        The client only chooses a source view's values or bins; its name,
+        expression and line come from the program.
+        """
+        with self.lock:
+            discovered = discover(self.workspace["program"]["source"])
+            if discovered is None:  # the program doesn't parse right now: keep what we had
+                discovered = [{k: s.get(k) for k in ("name", "param", "expr", "line")}
+                              for s in self.workspace["views"] if s.get("source")]
+        return merge(specs, discovered)
 
     def open_program(self, path, mode2D=None):
         path = Path(path).expanduser()
@@ -219,12 +251,15 @@ class AppState:
 
     def set_views(self, specs, f=None, preview=None):
         self.require_idle()
-        views, f_view, also = self.build_views(specs, f)
+        specs = self._reconcile(specs)
+        # Source views without values or bins wait for the next sample, which detects them.
+        waiting = [s for s in specs if needs_y(s)]
+        views, f_view, also = self.build_views([s for s in specs if not needs_y(s)], f)
         with self.lock:
             session = self.session
             resample = False
             if f_view is not None and session is not None and session.samples is not None:
-                if session.needs_resample(f_view, also):
+                if waiting or session.needs_resample(f_view, also):
                     resample = True
                 else:
                     try:
@@ -235,11 +270,13 @@ class AppState:
                     except ViewError as exc:
                         raise AppError(str(exc), where="views", view=_view_of(exc, f_view, also),
                                        field=exc.field) from exc
-            self.workspace["views"] = [v.spec for v in views]
-            self.workspace["f"] = f_view.name if f_view else None
-            names = [g.name for g in also]
+            built = {v.name: v.spec for v in views}
+            self.workspace["views"] = [built.get(s["name"], s) for s in specs]
+            all_names = [s["name"] for s in specs]
+            self.workspace["f"] = f if f in all_names else (f_view.name if f_view else None)
+            names = [n for n in all_names if n != self.workspace["f"]]
             self.workspace["preview"] = preview if preview in names else (names[0] if names else None)
-            if f_view is None:
+            if f_view is None and not waiting:
                 self.session = None
             self.clear_validation()
         self.publish(self.workspace_msg())
@@ -251,11 +288,11 @@ class AppState:
             return {"resampling": resample, "views": ws["views"], "f": ws["f"], "preview": ws["preview"]}
 
     def detect_rows(self, spec, n=300, seconds=5.0):
-        """Sampled values of a spec's bindings: from the cached scenes, or a short probe run."""
-        from .view import compile_expr
-
-        compile_expr(spec)  # report spec errors before sampling
-        args = [str(b.get("expr", "")).strip() for b in spec.get("bindings") or []]
+        """Sampled values of a spec's arguments: from the cached scenes, or a short probe run."""
+        if spec.get("source"):
+            spec = next((s for s in self._reconcile([spec]) if s["name"] == spec["name"]), spec)
+        spec_function(spec)  # report spec errors before sampling
+        args = spec_args(spec)
         session = self.session
         if session is not None and session.samples is not None and session.samples.has(args) \
                 and not self.dirty():
@@ -264,18 +301,9 @@ class AppState:
         self.require_idle()
         program = self.program()
         seed = self.workspace["seed"]
-
-        def probe():
-            from .sampling import SampleSet
-
-            compiled = program.compile(args)
-            deadline = time.monotonic() + seconds
-            samples = SampleSet(compiled, seed)
-            samples.extend(n, should_stop=lambda: time.monotonic() > deadline)
-            return samples.rows(args)
-
         try:
-            return self.executor.submit(probe).result(timeout=seconds + 120)
+            return self.executor.submit(probe_rows, program, args, seed, n, seconds).result(
+                timeout=seconds + 120)
         except (ProgramError, ViewError):
             raise
         except Exception as exc:
@@ -313,7 +341,7 @@ class AppState:
         if data.get("version") != WORKSPACE_VERSION:
             raise AppError(f"unknown workspace version {data.get('version')!r}", where="workspace")
         p = data.get("program") or {}
-        self.build_views(data.get("views") or [], data.get("f"))  # validate first
+        self.build_views([s for s in data.get("views") or [] if not needs_y(s)])  # validate first
         with self.lock:
             self.session = None
             self.clear_validation()
@@ -365,32 +393,41 @@ class AppState:
             if seed is not None:
                 self.workspace["seed"] = int(seed)
             seed = self.workspace["seed"]
-            if not self.workspace["views"]:
+            specs = [dict(s) for s in self.workspace["views"]]
+            f = self.workspace["f"]
+            if not specs:
                 raise AppError("define a view first", where="views")
-            _, f_view, also = self.build_views(self.workspace["views"], self.workspace["f"])
+            waiting = [s["name"] for s in specs if needs_y(s)]
+            self.build_views([s for s in specs if not needs_y(s)], f)  # report errors now
             program = self.program()
-            session = self.session
-            fresh = (fresh or session is None or session.samples is None or self.dirty()
-                     or session.needs_resample(f_view, also) or seed != session.seed)
-            if session is None:
-                session = Session(program, f_view, also, seed=seed)
-                session.listeners.append(self._on_session_change)
-                self.session = session
-            for name, by_label in self.pending_nu.items():
-                if name not in session._nus:
-                    session.preset_nu(name, by_label)
-            self.pending_nu = {}
             preview = self.workspace["preview"]
-            if fresh:
-                self.clear_validation()
-                self.workspace["n"] = n
 
         def work(job):
             def progress(done):
                 job.done = done
                 self.push_job()
 
-            if fresh:
+            if waiting:
+                self._detect_y(job, program, specs, waiting, seed)
+            _, f_view, also = self.build_views(specs, f)
+            with self.lock:
+                session = self.session
+                fresh_ = (fresh or bool(waiting) or session is None or session.samples is None
+                          or self.dirty() or session.needs_resample(f_view, also)
+                          or seed != session.seed)
+                if session is None:
+                    session = Session(program, f_view, also, seed=seed)
+                    session.listeners.append(self._on_session_change)
+                    self.session = session
+                for name, by_label in self.pending_nu.items():
+                    if name not in session._nus:
+                        session.preset_nu(name, by_label)
+                self.pending_nu = {}
+                if fresh_:
+                    self.clear_validation()
+                    self.workspace["n"] = n
+
+            if fresh_:
                 session.sample(n, program=program, view=f_view, also=also, seed=seed,
                                on_progress=progress, should_stop=job.stop.is_set)
                 if preview in {g.name for g in also}:
@@ -401,6 +438,27 @@ class AppState:
                 self.workspace["n"] = session.n
 
         return self._start_job("sample", n, work)
+
+    def _detect_y(self, job, program, specs, names, seed):
+        """Fill in values or bins for source views that have none, from a short probe. On the worker."""
+        for name in names:
+            spec = next(s for s in specs if s["name"] == name)
+            job.note = f"Detecting the values of {name}"
+            self.push_job(force=True)
+            rows = probe_rows(program, spec_args(spec), seed)
+            try:
+                spec.update(auto_y(detect_values(spec, rows)))
+            except ValueError as exc:
+                raise AppError(f"view {name!r}: {exc}", where="views", view=name, field="values") from exc
+        job.note = None
+        with self.lock:
+            for s in self.workspace["views"]:
+                if s["name"] in names:
+                    done = next(d for d in specs if d["name"] == s["name"])
+                    for key in ("values", "bins"):
+                        if done.get(key) is not None:
+                            s[key] = done[key]
+        self.publish(self.workspace_msg())
 
     def start_validate(self, n, seed=None):
         session = self.session
@@ -500,6 +558,17 @@ class AppState:
         if key not in self._map_cache:
             self._map_cache = {key: map_json(scenario.workspace)}
         return self._map_cache[key]
+
+
+def probe_rows(program, args, seed, n=300, seconds=5.0):
+    """A short sample of argument values, for detecting a view's values. Runs on the worker."""
+    from .sampling import SampleSet
+
+    compiled = program.compile(args)
+    deadline = time.monotonic() + seconds
+    samples = SampleSet(compiled, seed)
+    samples.extend(n, should_stop=lambda: time.monotonic() > deadline)
+    return samples.rows(args)
 
 
 def _labels_of(session, name):

@@ -35,10 +35,11 @@ type as Python.
 - **Program.** The left pane edits P. **Open…** reads a .scenic file from disk; the path is kept so `localPath()` and
   relative imports resolve. Edits made in the pane are not written back to the file. Tick **2D** for driving
   programs.
-- **Views.** A view binds names to Scenic expressions (`dist = distance from ego to parkedCar`) and computes f as
-  one Python expression over those names. The expression can use `isclose`, `deg`, `sqrt` and the other `math`
-  functions. Declare Y as values (`brake, continue`) or bin edges (`20, 25, 30`). **Detect** fills them in from
-  sampled scenes. One view is f, whose ν you edit; the others are previews.
+- **Views.** A view is either written in P (see below) or built in the form. A form view binds names to Scenic
+  expressions (`dist = distance from ego to parkedCar`) and computes f as one Python expression over those names.
+  The expression can use `isclose`, `deg`, `sqrt` and the other `math` functions. Declare Y as values
+  (`brake, continue`) or bin edges (`20, 25, 30`). **Detect** fills them in from sampled scenes. One view is f, whose
+  ν you edit; the others are previews.
 - **Sampling.** **Sample** recompiles and draws n scenes, and **+ more** adds to them. The estimates update while
   scenes stream in, and **Stop** keeps what has been drawn. Changing a view's expression or values reclassifies the
   cached scenes. A new binding expression triggers a resample.
@@ -49,6 +50,29 @@ type as Python.
 - **Scenes.** Click a bar to see scenes with that value: from μ̂, from μ̂′ (drawn ∝ ŵ), or from P′'s own samples.
 - **Workspaces.** **Save…** writes the program, views and ν to JSON. **Load…** reopens one and resamples with the
   same seed and n, so the same numbers come back.
+
+### Views in the program
+
+Any top-level `param view_<name> = <expr>` in P is a view named `<name>`. Scenic computes and records its value in
+every scene. To branch on random values, wrap a function with Scenic's `distributionFunction`, which delays the call
+until the scene is sampled (see `examples/pedestrian_views.scenic`):
+
+```scenic
+from scenic.core.distributions import distributionFunction
+
+@distributionFunction
+def brake(d, c):
+    return "brake" if d <= 2 and isclose(c, 90 deg) else "continue"
+
+param view_brake = brake(d, c)
+param view_gap = distance from ego to ped
+```
+
+The function must take its inputs as arguments: reading `d` from inside the body, or leaving off the decorator,
+raises `RandomControlFlowError`. The app picks these views up as you edit P and shows them as cards. There you set
+their values or bins, or leave them empty and they are detected on the next sample. Edits to a view in P are
+program edits, so they take effect after resampling. Form views reclassify the cached scenes instantly. The patch
+for a view in P calls P's own expression (`require not (brake(d, c) == 'continue') or …`) rather than a copy of it.
 
 ### The patch
 

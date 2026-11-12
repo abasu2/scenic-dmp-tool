@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { duration, int } from "../lib/format";
 import { attempt, setStore, useStore } from "../store";
+import { M } from "./Math";
 import { applyViews } from "./ViewsPanel";
 
 export function Toolbar() {
@@ -137,7 +138,11 @@ export function Toolbar() {
       )}
       {popover === "save" && (
         <PathPopover
-          title="Save the workspace (program, views, ν) as JSON"
+          title={
+            <>
+              Save the workspace (program, views, <M tex="\nu" />) as JSON
+            </>
+          }
           placeholder="/path/to/workspace.dmp.json"
           initial={workspace?.program.path ? workspace.program.path.replace(/\.scenic$/, ".dmp.json") : ""}
           action="Save"
@@ -156,7 +161,11 @@ export function Toolbar() {
 function Progress() {
   const job = useStore((s) => s.job);
   if (!job) return <div className="progress" />;
-  const what = job.kind === "sample" ? "Sampling P" : "Sampling P′";
+  const what = (
+    <>
+      Sampling <M tex={job.kind === "sample" ? "P" : "P'"} />
+    </>
+  );
   if (job.running) {
     const eta = job.rate ? (job.target - job.done) / job.rate : NaN;
     return (
@@ -164,12 +173,23 @@ function Progress() {
         <div className="bar">
           <div style={{ width: `${(100 * job.done) / job.target}%` }} />
         </div>
-        {what}: {int(job.done)} / {int(job.target)}
-        {job.rate ? ` · ${int(job.rate)}/s · ${duration(eta)} left` : ""}
+        {job.note ? (
+          `${job.note}…`
+        ) : (
+          <span>
+            {what}: {int(job.done)} / {int(job.target)}
+            {job.rate && job.done ? ` · ${int(job.rate)}/s · ${duration(eta)} left` : ""}
+          </span>
+        )}
       </div>
     );
   }
-  if (job.error) return <div className="progress bad">{what} failed</div>;
+  if (job.error)
+    return (
+      <div className="progress bad">
+        <span>{what} failed</span>
+      </div>
+    );
   return (
     <div className="progress muted">
       {job.stopped ? "Stopped" : "Done"}: {int(job.done)} scenes in {duration(job.elapsed)}
@@ -178,7 +198,7 @@ function Progress() {
 }
 
 function PathPopover(props: {
-  title: string;
+  title: ReactNode;
   placeholder: string;
   initial: string;
   action: string;

@@ -547,6 +547,21 @@ input.wide-num {
   flex: 1;
   min-width: 0;
 }
+.view-name.static {
+  padding: 3px 0;
+}
+.view-card.source {
+  background: var(--select);
+}
+.source-line {
+  display: block;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .radio {
   display: flex;
   align-items: center;
@@ -713,4 +728,32 @@ svg.scene.large {
   font-weight: 500;
   color: var(--muted);
   padding: 2px 12px 2px 0;
+}
+
+/* KaTeX sets math at 1.21em, which looks large next to UI text. */
+.math .katex {
+  font-size: 1.1em;
+}
+.svg-math {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tip {
+  position: fixed;
+  z-index: 100;
+  visibility: hidden;
+  max-width: 420px;
+  padding: 5px 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  font-size: 12.5px;
+  line-height: 1.45;
+  pointer-events: none;
 }
