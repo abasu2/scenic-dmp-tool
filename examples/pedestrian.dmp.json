@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "program": {
+    "source": "# The program P from scenic-dmp/example.md.\n# Stand-in classes so the program runs without a simulator model.\n# A driving-domain model would add default requirements that can reject samples and change μ.\nclass Car: pass\nclass Pedestrian: pass\n\nego = new Car\nd = Options({1: 0.2, 2: 0.5, 3: 0.3})\nc = Options({90 deg: 0.5, 0 deg: 0.5})  # crossing or walking along\nped = new Pedestrian ahead of ego by d,\n        facing c relative to ego.heading\n",
+    "path": "examples/pedestrian.scenic",
+    "mode2D": false,
+    "params": {}
+  },
+  "views": [
+    {
+      "name": "brake",
+      "bindings": [
+        {
+          "name": "d",
+          "expr": "d"
+        },
+        {
+          "name": "c",
+          "expr": "c"
+        }
+      ],
+      "expr": "\"brake\" if d <= 2 and isclose(c, deg(90)) else \"continue\"",
+      "values": [
+        "brake",
+        "continue"
+      ]
+    },
+    {
+      "name": "d",
+      "bindings": [
+        {
+          "name": "d",
+          "expr": "d"
+        }
+      ],
+      "expr": "d",
+      "values": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "f": "brake",
+  "preview": "d",
+  "seed": 0,
+  "n": 1000,
+  "nu": {}
+}

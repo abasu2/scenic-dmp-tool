@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "program": {
+    "source": "# The program P from scenic-dmp/example.md, with its views defined in the program.\n# A view is a param named view_<name>; the app sets its values or bins (or detects them).\nfrom math import isclose\nfrom scenic.core.distributions import distributionFunction\n\nclass Car: pass\nclass Pedestrian: pass\n\nego = new Car\nd = Options({1: 0.2, 2: 0.5, 3: 0.3})\nc = Options({90 deg: 0.5, 0 deg: 0.5})  # crossing or walking along\nped = new Pedestrian ahead of ego by d,\n        facing c relative to ego.heading\n\n# distributionFunction delays the call until the scene is sampled, so the body\n# sees concrete values and can branch on them.\n@distributionFunction\ndef brake(d, c):\n    return \"brake\" if d <= 2 and isclose(c, 90 deg) else \"continue\"\n\nparam view_brake = brake(d, c)\nparam view_d = d\n",
+    "path": "examples/pedestrian_views.scenic",
+    "mode2D": false,
+    "params": {}
+  },
+  "views": [
+    {
+      "name": "brake",
+      "source": true,
+      "param": "view_brake",
+      "expr": "brake(d, c)",
+      "line": 21,
+      "values": [
+        "brake",
+        "continue"
+      ]
+    },
+    {
+      "name": "d",
+      "source": true,
+      "param": "view_d",
+      "expr": "d",
+      "line": 22,
+      "values": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "f": "brake",
+  "preview": "d",
+  "seed": 0,
+  "n": 1000,
+  "nu": {}
+}

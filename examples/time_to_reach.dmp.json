@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "program": {
+    "source": "# A pedestrian at a random gap ahead of an ego car with a random speed.\n# The view in time_to_reach.dmp.json is the time for the ego to reach the pedestrian,\n# gap / speed in seconds: a continuous value, so the view sorts it into bins.\n# Stand-in classes so the program runs without a simulator model.\nclass Car: pass\nclass Pedestrian: pass\n\ngap = Range(5, 40)  # m\nego = new Car with speed Range(5, 15)  # m/s\nped = new Pedestrian ahead of ego by gap\n",
+    "path": "examples/time_to_reach.scenic",
+    "mode2D": false,
+    "params": {}
+  },
+  "views": [
+    {
+      "name": "time_to_reach",
+      "bindings": [
+        {
+          "name": "gap",
+          "expr": "gap"
+        },
+        {
+          "name": "speed",
+          "expr": "ego.speed"
+        }
+      ],
+      "expr": "gap / speed",
+      "bins": [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0
+      ]
+    },
+    {
+      "name": "gap",
+      "bindings": [
+        {
+          "name": "gap",
+          "expr": "gap"
+        }
+      ],
+      "expr": "gap",
+      "bins": [
+        10.0,
+        20.0,
+        30.0
+      ]
+    },
+    {
+      "name": "speed",
+      "bindings": [
+        {
+          "name": "speed",
+          "expr": "ego.speed"
+        }
+      ],
+      "expr": "speed",
+      "bins": [
+        7.5,
+        10.0,
+        12.5
+      ]
+    }
+  ],
+  "f": "time_to_reach",
+  "preview": "gap",
+  "seed": 0,
+  "n": 1000,
+  "nu": {}
+}
