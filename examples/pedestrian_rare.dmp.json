@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "program": {
+    "source": "# The program P from scenic-dmp/example-rare.md: pedestrian.scenic with a rare gap d = 0.5.\n# Under the view f (collide / brake / continue), collide has probability 0.001, so\n# n = 200 samples usually miss it. pedestrian_rare.dmp.json is a workspace with f defined.\n# Stand-in classes so the program runs without a simulator model.\nclass Car: pass\nclass Pedestrian: pass\n\nego = new Car\nd = Options({0.5: 0.002, 1: 0.198, 2: 0.5, 3: 0.3})\nc = Options({90 deg: 0.5, 0 deg: 0.5})  # crossing or walking along\nped = new Pedestrian ahead of ego by d,\n        facing c relative to ego.heading\n",
+    "path": "examples/pedestrian_rare.scenic",
+    "mode2D": false,
+    "params": {}
+  },
+  "views": [
+    {
+      "name": "outcome",
+      "bindings": [
+        {
+          "name": "d",
+          "expr": "d"
+        },
+        {
+          "name": "c",
+          "expr": "c"
+        }
+      ],
+      "expr": "\"collide\" if d <= 0.5 and isclose(c, deg(90)) else \"brake\" if d <= 2 and isclose(c, deg(90)) else \"continue\"",
+      "values": [
+        "brake",
+        "continue",
+        "collide"
+      ]
+    },
+    {
+      "name": "d",
+      "bindings": [
+        {
+          "name": "d",
+          "expr": "d"
+        }
+      ],
+      "expr": "d",
+      "values": [
+        "0.5",
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "f": "outcome",
+  "preview": "d",
+  "seed": 1,
+  "n": 200,
+  "nu": {}
+}
