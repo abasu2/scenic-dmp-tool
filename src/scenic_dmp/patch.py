@@ -134,7 +134,7 @@ def patch_block(view, *, nu, p_hat, w, a, M, n):
     tree = ast.parse(spec["expr"], mode="eval")
     renamable = (free_names(tree) & set(HELPERS)) - set(view.binding_names)
     renamer = _Rename(renamable)
-    body = ast.unparse(renamer.visit(tree))
+    body = _scenic_unparse(renamer.visit(tree))
     if renamer.used:
         imports = ", ".join(
             f"{'radians' if h == 'deg' else h} as {PREFIX}{h}" for h in sorted(renamer.used)
@@ -188,6 +188,35 @@ class _Rename(ast.NodeTransformer):
         if isinstance(node.ctx, ast.Load) and node.id in self.names:
             self.used.add(node.id)
             return ast.copy_location(ast.Name(PREFIX + node.id, node.ctx), node)
+        return node
+
+
+def _scenic_unparse(tree):
+    """ast.unparse, with the parentheses that Scenic needs and Python doesn't.
+
+    Scenic's grammar takes no conditional right after `else`, so Python's
+    `a if p else b if q else c` must be written `a if p else (b if q else c)`,
+    and ast.unparse leaves those parentheses out. Each such conditional is
+    held out under a placeholder name, unparsed on its own, and put back in
+    parentheses.
+    """
+    holder = _HoldElse()
+    text = ast.unparse(holder.visit(tree))
+    for name, node in reversed(holder.held):  # outer ones first: their text holds inner names
+        text = re.sub(rf"\b{name}\b", lambda _: f"({ast.unparse(node)})", text, count=1)
+    return text
+
+
+class _HoldElse(ast.NodeTransformer):
+    def __init__(self):
+        self.held = []
+
+    def visit_IfExp(self, node):
+        self.generic_visit(node)
+        if isinstance(node.orelse, ast.IfExp):
+            name = f"{PREFIX}else_{len(self.held)}"
+            self.held.append((name, node.orelse))
+            node.orelse = ast.Name(name, ast.Load())
         return node
 
 

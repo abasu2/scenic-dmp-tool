@@ -76,6 +76,24 @@ def test_zero_nu_is_a_hard_requirement():
     assert all(result["nu_in_ci"])
 
 
+@pytest.mark.parametrize("expr, body", [
+    # Scenic's grammar takes no conditional after `else`, unlike Python's, and
+    # ast.unparse drops the parentheses there, so the patch has to put them back.
+    ("'a' if x < 2 else 'b' if x < 5 else 'c' if x < 8 else 'd'",
+     "'a' if x < 2 else ('b' if x < 5 else ('c' if x < 8 else 'd'))"),
+    ("str('a' if x < 2 else ('b' if x < 5 else 'c') if x < 8 else 'd')",
+     "str('a' if x < 2 else (('b' if x < 5 else 'c') if x < 8 else 'd'))"),
+])
+def test_chained_conditional_view_is_valid_scenic(expr, body):
+    view = View.from_spec({"name": "x", "bindings": [{"name": "x", "expr": "x"}],
+                           "expr": expr, "values": ["a", "b", "c", "d"]})
+    s = Session(Program(TOY), view, seed=0).sample(500)
+    s.set_nu([0.25, 0.25, 0.25, 0.25])
+    assert f"    return {body}" in session_patch(s)["block"]
+    result, _ = validate(s, 300)
+    assert result["n"] == 300
+
+
 RARE = """\
 class Car: pass
 ego = new Car
