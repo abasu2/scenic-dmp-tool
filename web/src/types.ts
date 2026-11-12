@@ -94,13 +94,18 @@ export interface Validation {
   view: string;
   labels: string[];
   n: number;
+  /** P′'s scenes whose value had samples in P: the ones compared with ν. */
+  n_checked: number;
   target: number;
   counts: number[];
+  /** Whether the value had samples in P. p_hat and its CI are out of n_checked if so, else out of n. */
+  checked: boolean[];
   p_hat: number[];
   ci_lo: number[];
   ci_hi: number[];
   nu: number[];
-  nu_in_ci: boolean[];
+  /** null for a value that isn't checked. */
+  nu_in_ci: (boolean | null)[];
   mean_iters: number;
   predicted_iters: number;
   M: number;

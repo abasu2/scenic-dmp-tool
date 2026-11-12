@@ -245,14 +245,15 @@ function NuChart({ est, nu }: { est: Estimates; nu: number[] }) {
               <div>
                 <M tex="\nu =" /> {pct(nu[k])}
               </div>
-              {ro && est.supported[k] && (
+              {ro && (
                 <div>
                   <M tex="\hat w =" /> {sig(ro.w[k])}, <M tex="\hat a =" /> {sig(ro.a[k])}
                 </div>
               )}
               {!est.supported[k] && (
                 <div>
-                  No samples, so <M tex="\nu" /> is locked at 0.
+                  No samples, so <M tex="\nu" /> is locked at 0 and <M tex="\hat w = 1" />: <M tex="P'" /> leaves these
+                  scenes alone.
                 </div>
               )}
             </>
@@ -281,7 +282,7 @@ function NuChart({ est, nu }: { est: Estimates; nu: number[] }) {
                 </>
               )}
               <XLabel cx={cx} y={base + 15} text={label} rotate={!rows} />
-              {rows && ro && est.supported[k] && (
+              {rows && ro && (
                 <>
                   <SvgMath cx={cx} y={base + 31} width={bw}>
                     <M tex="\hat w" /> {sig(ro.w[k])}

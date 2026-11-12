@@ -76,6 +76,43 @@ def test_zero_nu_is_a_hard_requirement():
     assert all(result["nu_in_ci"])
 
 
+RARE = """\
+class Car: pass
+ego = new Car
+x = Options({0: 0.005, 1: 0.495, 2: 0.5})
+"""
+
+
+def test_unseen_value_is_left_alone():
+    view = View.from_spec({"name": "x", "bindings": [{"name": "x", "expr": "x"}],
+                           "expr": "int(x)", "values": ["0", "1", "2"]})
+    s = Session(Program(RARE), view, seed=2).sample(100)
+    assert s.counts.tolist() == [0, 41, 59]  # x = 0 occurs in P but not in these samples
+
+    s.reset_nu()
+    block = session_patch(s)["block"]
+    assert not [line for line in block.splitlines() if line.startswith("require")]
+
+    s.set_nu({"1": 0.75, "2": 0.25})
+    assert s.w[0] == 1 and s.M == pytest.approx(0.75 / 0.41)
+    block = session_patch(s)["block"]
+    assert (
+        f"require not (__dmp_view_x((x)) == 0) or __dmp_u < {1 / s.M:.6g}"
+        "  # 0: no samples, so ŵ = 1"
+    ) in block
+    result, _ = validate(s, 3000)
+    counts = result["counts"]
+    assert counts[0] > 0  # P′ still makes these scenes
+    # ... but ν says nothing about them, so they aren't checked, and ν is compared with
+    # P′'s distribution among the values P's samples have.
+    assert result["checked"] == [False, True, True]
+    assert result["nu_in_ci"][0] is None
+    assert result["n_checked"] == counts[1] + counts[2] == result["n"] - counts[0]
+    assert result["p_hat"][0] == pytest.approx(counts[0] / result["n"])
+    assert result["p_hat"][1] == pytest.approx(counts[1] / result["n_checked"])
+    assert result["p_hat"][1] + result["p_hat"][2] == pytest.approx(1)
+
+
 def test_no_patch_when_blocked_or_lambda_view():
     s = Session(Program(TOY), View("x", ["x"], float, bins=[2, 5]), seed=0).sample(100)
     with pytest.raises(PatchError, match="no expression source"):

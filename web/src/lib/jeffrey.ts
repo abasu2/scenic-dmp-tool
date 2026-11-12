@@ -29,10 +29,13 @@ export function rescale(nu: number[], y: number, t: number, supported: boolean[]
   return out;
 }
 
-/** ŵ, â and M for nu, or null if nu puts mass on a value with no samples. */
+/**
+ * ŵ, â and M for nu, or null if nu puts mass on a value with no samples.
+ * A value with no samples gets ŵ = 1, so the patch leaves its scenes alone.
+ */
 export function readout(nu: number[], pHat: number[], supported: boolean[]): Readout | null {
   for (let i = 0; i < nu.length; i++) if (nu[i] > 0 && !supported[i]) return null;
-  const w = nu.map((v, i) => (supported[i] ? v / pHat[i] : 0));
+  const w = nu.map((v, i) => (supported[i] ? v / pHat[i] : 1));
   const M = Math.max(...w);
   return { w, a: w.map((x) => x / M), M };
 }

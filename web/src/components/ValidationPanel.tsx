@@ -24,7 +24,8 @@ export function ValidationPanel() {
     (validation.view !== est.view ||
       validation.nu.length !== est.nu.length ||
       validation.nu.some((x, i) => Math.abs(x - est.nu[i]) > 1e-9));
-  const allIn = validation?.nu_in_ci.every(Boolean);
+  const allIn = validation?.nu_in_ci.every((x) => x !== false);
+  const unchecked = validation ? validation.n - validation.n_checked : 0;
 
   return (
     <section className="card">
@@ -88,6 +89,21 @@ export function ValidationPanel() {
             <span className={allIn ? "good" : "bad"}>
               <M tex="\nu" /> {allIn ? "is inside every 95% CI" : "is outside some 95% CIs"}
             </span>
+            {unchecked > 0 && (
+              <span
+                className="muted"
+                {...tip(
+                  <>
+                    Values with no samples in <M tex="P" /> have <M tex="\hat w = 1" />, so <M tex="P'" /> makes them at
+                    about their rate in <M tex="P" />. They aren't checked: <M tex="\nu" /> is compared with{" "}
+                    <M tex="P'" />
+                    's scenes among the other values.
+                  </>,
+                )}
+              >
+                {int(unchecked)} {unchecked === 1 ? "scene" : "scenes"} with unsampled values, not checked
+              </span>
+            )}
           </div>
           <div className="legend">
             <span className="swatch nu-light" />
@@ -119,15 +135,24 @@ function ValidationChart() {
       {v.labels.map((label, k) => {
         const cx = PAD.l + bw * (k + 0.5);
         const w = bw * 0.6;
+        const ci = `[${pct(v.ci_lo[k])}, ${pct(v.ci_hi[k])}]`;
         return (
           <g
             key={k}
-            className={`col${v.nu_in_ci[k] ? "" : " outside"}`}
+            className={`col${!v.checked[k] ? " unchecked" : v.nu_in_ci[k] ? "" : " outside"}`}
             {...tip(
-              <>
-                {label}: <M tex="\nu =" /> {pct(v.nu[k])}, <M tex="f_\#\hat\mu_{P'} =" /> {pct(v.p_hat[k])} [
-                {pct(v.ci_lo[k])}, {pct(v.ci_hi[k])}] ({v.counts[k]} of {v.n})
-              </>,
+              v.checked[k] ? (
+                <>
+                  {label}: <M tex="\nu =" /> {pct(v.nu[k])}, <M tex="f_\#\hat\mu_{P'} =" /> {pct(v.p_hat[k])} {ci} (
+                  {v.counts[k]} of {v.n_checked}
+                  {v.n_checked < v.n ? " scenes with sampled values" : ""})
+                </>
+              ) : (
+                <>
+                  {label}: no samples in <M tex="P" />, so not checked. <M tex="P'" /> made {v.counts[k]} of {v.n} scenes
+                  ({pct(v.p_hat[k])}) {ci}
+                </>
+              ),
             )}
           >
             <rect x={cx - w / 2} y={yOf(v.nu[k])} width={w} height={base - yOf(v.nu[k])} className="nu-light" />

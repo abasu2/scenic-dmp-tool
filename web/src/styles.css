@@ -495,6 +495,12 @@ input.wide-num {
   stroke: var(--bad);
   stroke-width: 2;
 }
+.chart-svg .col.unchecked .point {
+  fill: var(--muted);
+}
+.chart-svg .col.unchecked .whisker line {
+  stroke: var(--muted);
+}
 .chart-svg .hatch {
   stroke: var(--ghost);
   stroke-width: 2;

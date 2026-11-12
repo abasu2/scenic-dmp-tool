@@ -48,7 +48,8 @@ type as Python.
   locked at 0.
 - **$P'$.** The **$P'$** tab shows $P$ with the Jeffrey patch appended, and updates while you drag. **Check $P'$**
   samples it and compares $f_\sharp\hat\mu_{P'}$ (with 95% CIs) to $\nu$, and its iterations per scene to $P$'s
-  $\times M$.
+  $\times M$. Values with no samples in $P$ aren't checked, since $P'$ leaves them alone. $\nu$ is compared with
+  $P'$'s distribution among the other values.
 - **Scenes.** Click a bar to see scenes with that value: from $\hat\mu$, from $\hat\mu'$ (drawn $\propto \hat w$), or
   from $P'$'s own samples.
 - **Workspaces.** **Save…** writes the program, views and $\nu$ to JSON. **Load…** reopens one and resamples with the
@@ -86,7 +87,8 @@ require not (f(s) == y) or __dmp_u < â(y)
 ```
 
 where `__dmp_u = Range(0, 1)` is drawn afresh on every rejection-sampling iteration, and $f$ is the view's expression
-written as a function. Scenic's soft requirements (`require[p]`) would not work here, because Scenic picks the
+written as a function. A value with no samples may still occur in $P$, so it gets $\hat w(y) = 1$ and
+$\hat a(y) = 1/M$: $P'$ leaves its scenes alone instead of forbidding them. Scenic's soft requirements (`require[p]`) would not work here, because Scenic picks the
 active ones once per scene, outside the rejection loop.
 
 ## From Python

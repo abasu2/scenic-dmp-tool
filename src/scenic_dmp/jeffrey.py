@@ -8,7 +8,12 @@ import numpy as np
 
 
 def weights(nu, p_hat):
-    """Jeffrey weights w(y) = nu(y) / p_hat(y) on supported y, 0 elsewhere.
+    """Jeffrey weights w(y) = nu(y) / p_hat(y) on supported y, 1 elsewhere.
+
+    A value with no samples may still have (f#mu)(y) > 0, so it gets weight 1:
+    the patch leaves its scenes alone rather than forbidding them (notes.tex,
+    "Program Patch"). This never sets M, since the weights on supported values
+    average to 1 under p_hat, so their max is at least 1.
 
     Raises if nu puts mass on a y with p_hat(y) = 0: reweighting can't create it.
     """
@@ -17,7 +22,7 @@ def weights(nu, p_hat):
     supported = p_hat > 0
     if np.any(nu[~supported] > 0):
         raise ValueError("nu puts mass on view values with no samples")
-    w = np.zeros_like(p_hat)
+    w = np.ones_like(p_hat)
     w[supported] = nu[supported] / p_hat[supported]
     return w
 

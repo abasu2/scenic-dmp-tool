@@ -358,8 +358,10 @@ class Session:
                     f"  {label:<{width}}  {self.counts[i]:>7}/{self.n}  {self.p_hat[i]:7.2%} "
                     f"[{self.ci[0][i]:6.2%}, {self.ci[1][i]:6.2%}]  ν {self.nu[i]:7.2%}"
                 )
-                if self.w is not None and self.supported[i]:
+                if self.w is not None:
                     row += f"  ŵ {self.w[i]:.4g}  â {self.a[i]:.4g}"
+                if not self.supported[i]:
+                    row += "  (no samples)"
                 lines.append(row)
             return "\n".join(lines)
 

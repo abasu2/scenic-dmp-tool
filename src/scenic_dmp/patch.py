@@ -6,7 +6,9 @@ y with acceptance probability â(y) < 1 it adds
     require not (f(s) == y) or u < â(y)
 
 where u = Range(0, 1) is drawn afresh on every rejection-sampling iteration, so
-a scene with f(s) = y is kept with probability â(y). (Scenic's soft
+a scene with f(s) = y is kept with probability â(y). A value with no samples
+has ŵ(y) = 1, so â(y) = 1/M: P′ leaves its scenes alone instead of forbidding
+them, and when ν = f#μ̂ (M = 1) it adds no requirement at all. (Scenic's soft
 requirements, `require[p]`, are no substitute: Scenic decides which ones are
 active once per generated scene, outside the rejection loop.)
 
@@ -95,13 +97,11 @@ def patch_block(view, *, nu, p_hat, w, a, M, n):
     lines = [
         f"# --- Added by scenic-dmp: Jeffrey update for view {view.name!r} ---",
         f"# f#μ̂ estimated from n = {n} scenes of P. A scene with view value y is kept with",
-        "# probability â(y) = ŵ(y) / M, where ŵ(y) = ν(y) / f#μ̂(y).",
+        "# probability â(y) = ŵ(y) / M, where ŵ(y) = ν(y) / f#μ̂(y), or 1 if y has no samples.",
     ]
     for i, label in enumerate(labels):
-        row = f"#   {label:<{width}}  f#μ̂ {p_hat[i]:7.2%}  ν {nu[i]:7.2%}"
-        if p_hat[i] > 0:
-            row += f"  ŵ {w[i]:.4g}  â {a[i]:.4g}"
-        else:
+        row = f"#   {label:<{width}}  f#μ̂ {p_hat[i]:7.2%}  ν {nu[i]:7.2%}  ŵ {w[i]:.4g}  â {a[i]:.4g}"
+        if p_hat[i] == 0:
             row += "  (no samples)"
         lines.append(row)
     lines.append(
@@ -115,8 +115,11 @@ def patch_block(view, *, nu, p_hat, w, a, M, n):
         if a[i] >= 1 - 1e-9:
             continue
         if a[i] <= 0:
-            note = "no samples, so ν = 0" if p_hat[i] == 0 else "ν = 0"
-            requires.append(f"require not ({cond})  # {label}: {note}, never kept")
+            requires.append(f"require not ({cond})  # {label}: ν = 0, never kept")
+        elif p_hat[i] == 0:
+            requires.append(
+                f"require not ({cond}) or {PREFIX}u < {a[i]:.6g}  # {label}: no samples, so ŵ = 1"
+            )
         else:
             requires.append(f"require not ({cond}) or {PREFIX}u < {a[i]:.6g}  # {label}")
 
@@ -194,6 +197,13 @@ class _Rename(ast.NodeTransformer):
 def validate(session, n, *, seed=None, max_iterations=2000, on_progress=None, should_stop=None):
     """Sample P′ and compare f#μ̂_{P′} with ν.
 
+    Only the values that P's samples have are checked. P′ leaves the others
+    alone (ŵ = 1), so it makes them at about their rate in P, which ν says
+    nothing about; and on the checked values it targets ν scaled down to make
+    room for them (notes.tex, "Program Patch"). So ν(y) is compared with P′'s
+    distribution among the checked values, and an unchecked value gets
+    nu_in_ci = None, with p_hat its share of all of P′'s scenes.
+
     Returns (result, samples). result holds f#μ̂_{P′} with Wilson 95% CIs,
     whether each ν(y) lies in its CI, and P′'s measured iterations per scene
     against the prediction (P's iterations × M). on_progress(result) is called
@@ -202,6 +212,7 @@ def validate(session, n, *, seed=None, max_iterations=2000, on_progress=None, sh
     patch = session_patch(session)
     with session.lock:
         view = session.view
+        checked = session.supported.copy()
         program = session.program.with_source(patch["source"])
         seed = session.seed + 1 if seed is None else seed
     compiled = program.compile(list(view.args))
@@ -214,18 +225,27 @@ def validate(session, n, *, seed=None, max_iterations=2000, on_progress=None, sh
         y_idx = view.classify(rows)
         k = len(y_idx)
         counts = estimate.counts(y_idx, view.K)
-        lo, hi = estimate.wilson(counts, k)
+        k_checked = int(counts[checked].sum())
+        total = np.where(checked, k_checked, k)
+        p_hat = np.divide(counts, total, out=np.zeros(view.K), where=total > 0)
+        lo, hi = np.zeros(view.K), np.ones(view.K)
+        lo[checked], hi[checked] = estimate.wilson(counts[checked], k_checked)
+        lo[~checked], hi[~checked] = estimate.wilson(counts[~checked], k)
         return {
             "view": view.name,
             "labels": view.labels,
             "n": k,
+            "n_checked": k_checked,
             "target": n,
             "counts": [int(c) for c in counts],
-            "p_hat": [float(c / k) for c in counts],
+            "checked": [bool(c) for c in checked],
+            "p_hat": [float(p) for p in p_hat],
             "ci_lo": [float(x) for x in lo],
             "ci_hi": [float(x) for x in hi],
             "nu": [float(x) for x in nu],
-            "nu_in_ci": [bool(lo[i] <= nu[i] <= hi[i]) for i in range(view.K)],
+            "nu_in_ci": [
+                bool(lo[i] <= nu[i] <= hi[i]) if checked[i] else None for i in range(view.K)
+            ],
             "mean_iters": float(np.mean(samples.iterations)),
             "predicted_iters": patch["predicted_iters"],
             "M": patch["M"],

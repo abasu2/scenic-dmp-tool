@@ -50,7 +50,17 @@ def test_weights_and_acceptance():
 def test_weights_reject_unsupported_mass():
     with pytest.raises(ValueError):
         jeffrey.weights([0.5, 0.5, 0.0], [0.0, 1.0, 0.0])
-    assert jeffrey.weights([0.0, 1.0, 0.0], [0.0, 1.0, 0.0]) == pytest.approx([0, 1, 0])
+
+
+def test_unsupported_values_get_weight_one():
+    # A value with no samples is left alone (notes.tex, "Program Patch").
+    assert jeffrey.weights([0.0, 1.0, 0.0], [0.0, 1.0, 0.0]) == pytest.approx([1, 1, 1])
+    w = jeffrey.weights([0.5, 0.5, 0.0], [0.35, 0.65, 0.0])
+    assert w == pytest.approx([10 / 7, 10 / 13, 1])
+    a, M = jeffrey.acceptance_probs(w)
+    # It never sets M, so its acceptance probability is 1/M.
+    assert M == pytest.approx(10 / 7)
+    assert a == pytest.approx([1, 7 / 13, 7 / 10])
 
 
 def test_reweighting_matches_mu_prime():
